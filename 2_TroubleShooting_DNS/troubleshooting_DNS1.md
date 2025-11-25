@@ -1,54 +1,75 @@
 # Exercices de troubleshooting DHCP 2
 
 - **Auteur(s)** : Charlier Thomas  
-- **Date** : 25/11/2025
-*GNS3 n'ayant pas acces a internet, je considérerais qu'une trace whireshark vers le router est un acces internet réussi*
+- **Date** : 25/11/2025  
+*GNS3 n’ayant pas accès à internet, je considérerai qu’une trace Wireshark vers le routeur est un accès internet réussi.*
 ---
 
 ## 1. Bug Report
 
-Je travaille sur un réseau complet contenant un serveur DHCP utilisant dhcpd, un serveur DNS résolver, un NS server interne a l'entreprise, ainsi que deux clients DHCP : Direction et Atelier.  
+Je travaille sur un réseau complet contenant un serveur DHCP utilisant dhcpd, un serveur DNS résolveur, un NS interne à l’entreprise, ainsi que deux clients DHCP : Direction et Atelier.
 
-Les utilisateurs indiquent que depuis des modifications, seul un client DHCP peut se connecter à Internet à la fois, et parfois le poste pouvant se connecter change. Avant cela, tous les clients DHCP pouvaient accéder à Internet simultanément.  
+Le client me dit avoir des problèmes de connexion lorsqu’il est connecté dans l’entreprise.
 
 ---
 
 ## 2. Collecte des symptômes
 
-Depuis le PC Direction, un ping vers 1.1.1.1 échoue. La commande ip a montre que Direction n'a pas d'adresse IP.  
+Depuis le PC Direction, un ping vers 1.1.1.1 réussit car une trace vers le routeur est reçue (rappel : la VM n’a pas d’accès à internet, un ping ne peut donc pas réellement réussir).
 
-Depuis le PC Atelier, le ping fonctionne et l'adresse IP est 192.168.0.10. Après redémarrage d'Atelier, le ping fonctionne toujours et l'adresse IP reste 192.168.0.10.  
+Depuis le PC Direction, je ping google.com : ma trace vers le résolveur est bien reçue mais le résolveur répond “Refused”. ![capture](/2_TroubleShooting_DNS/capture_refused.heic)
 
-Après un certain temps, le PC Direction peut maintenant se connecter et obtient également l'adresse IP 192.168.0.10. Normalement, les deux PC devraient pouvoir se connecter simultanément et avoir des adresses IP différentes.  
-
-Une capture Wireshark montre que les PC sans IP effectuent des DHCPDISCOVER sans obtenir de réponse. Parfois, les deux PC récupèrent l'IP .10 au même moment mais restent incapables de se connecter.  
+Je regarde l’IP du PC Direction et vois : 192.168.0.10.
 
 ### Liste des outils utilisés
 
-Les outils utilisés pour cette analyse sont Wireshark, ping, ip a et dhcpd en mode debug.  
+Les outils utilisés pour cette analyse sont :
+Wireshark,  
+netstat,  
+ping,  
+ip a,  
+named -g.
 
 ---
 
 ## 3. Identification et description du problème
 
-Le problème observé est que seulement un client DHCP peut se connecter à Internet à la fois. Tous les clients fonctionnels reçoivent l'IP 192.168.0.10, les autres restent bloqués en DHCPDISCOVER.  
-
-L'hypothèse est que la configuration DHCP a été modifiée et que seule l'IP .10 est disponible. Le premier client arrivé sur le réseau obtient cette IP jusqu'à la fin de son bail DHCP.  
-
-Il semble que le fichier de configuration DHCPD ne permette que de récupérer l'IP .10.  
+Le problème observé est que le résolveur refuse les demandes des clients. Il semblerait que le résolveur n’accepte pas les requêtes provenant du range IP de la machine.
 
 ---
 
 ## 4. Proposition de solution
 
-La solution consiste à modifier le fichier de configuration DHCPD situé dans /etc/dhcp/dhcpd.conf. Le range d'adresses était défini de 192.168.0.10 à 192.168.0.10, limitant ainsi le serveur à fournir une seule IP.  
+Modifier le range pour que le résolveur accepte les requêtes des clients DNS. Il faut donc aller dans /etc/bind/named.conf pour vérifier cela.  
+[config avant résolution](/2_TroubleShooting_DNS/config1.heic)
 
-Il faut élargir ce range pour permettre la distribution d'adresses supplémentaires, par exemple de 192.168.0.10 à 192.168.0.100. Cela permettra au serveur de fournir jusqu'à 90 IP différentes, permettant ainsi à 90 PC configurés en DHCP de se connecter sur le réseau interne.  
+Nous pouvons voir :
 
-Après modification du fichier, il faut redémarrer le service DHCP pour appliquer la configuration.  
+```
+allow-recursion {
+    192.168.1.0/24;  --> tous les 192.168.1.
+    127.0.0.1/32;    --> pour lui-même
+};
+```
+
+Mais notre client DNS a comme IP 192.168.0.10, il n’est donc effectivement pas dans le bon range d’IP.  
+Nous pouvons soit aller dans le serveur DHCP pour vérifier les IP qu’il attribue et modifier le serveur DNS pour que cela corresponde exactement, soit mettre 192.168.0.0/18 pour que tout potentiel sous-réseau soit pris en compte.
+
+Je choisis la solution la plus propre et modifie donc le résolveur comme suit :
+
+```
+allow-recursion {
+    192.168.0.0/24;  --> tous les 192.168.0.
+    127.0.0.1/32;    --> pour lui-même
+};
+```
+Cela est plus propre car cela n’accepte que les 254 adresses du réseau réel, et non des milliers de machines inexistantes qui pourraient potentiellement être utilisées par des personnes malveillantes.
+L’IP 192.168.0.10 est donc maintenant prise en compte dans la plage d’IP.
 
 ### Validation
 
-Pour valider la solution, il faut renouveler l'adresse IP sur chaque client, vérifier avec ip a que chaque machine reçoit une IP unique dans le nouveau range et tester la connectivité Internet avec un ping vers 1.1.1.1.  
+Je réessaye après le changement et constate que le serveur envoie une requête vers le routeur, ce qui prouve qu’il a accepté la demande (le routeur répond mal car il n’a pas de connexion internet et ne peut donc pas répondre).  
+[trace après résolution](/2_TroubleShooting_DNS/traceFIn.heic)
 
-Après correction, le PC Direction obtient par exemple l'adresse IP 192.168.0.11 et le PC Atelier l'adresse IP 192.168.0.10. Les deux peuvent maintenant se connecter simultanément sans conflit d'IP, et aucun conflit n'est détecté sur le réseau avec Wireshark.  
+Pour m’en assurer, je ping **www.woodytoys.lab**, et le ping fonctionne bel et bien, ce qui prouve le bon fonctionnement du résolveur et du SOA.  
+![capture](/2_TroubleShooting_DNS/ping%20.HEIC)
