@@ -17,7 +17,7 @@ Le client me dit avoir des problèmes de connexion lorsqu’il est connecté dan
 
 Depuis le PC Direction, un ping vers 1.1.1.1 réussit car une trace vers le routeur est reçue (rappel : la VM n’a pas d’accès à internet, un ping ne peut donc pas réellement réussir).
 
-Depuis le PC Direction, je ping google.com : ma trace vers le résolveur est bien reçue mais le résolveur répond “Refused”. ![capture](/2_TroubleShooting_DNS/capture_refused.heic)
+Depuis le PC Direction, je ping google.com : ma trace vers le résolveur est bien reçue mais le résolveur répond “Refused”. ![capture](/2_TroubleShooting_DNS/capture_refused.png)
 
 Je regarde l’IP du PC Direction et vois : 192.168.0.10.
 
@@ -41,7 +41,7 @@ Le problème observé est que le résolveur refuse les demandes des clients. Il 
 ## 4. Proposition de solution
 
 Modifier le range pour que le résolveur accepte les requêtes des clients DNS. Il faut donc aller dans /etc/bind/named.conf pour vérifier cela.  
-[config avant résolution](/2_TroubleShooting_DNS/config1.heic)
+[config avant résolution](/2_TroubleShooting_DNS/config1.png)
 
 Nous pouvons voir :
 
@@ -69,7 +69,7 @@ L’IP 192.168.0.10 est donc maintenant prise en compte dans la plage d’IP.
 ### Validation
 
 Je réessaye après le changement et constate que le serveur envoie une requête vers le routeur, ce qui prouve qu’il a accepté la demande (le routeur répond mal car il n’a pas de connexion internet et ne peut donc pas répondre).  
-[trace après résolution](/2_TroubleShooting_DNS/traceFIn.heic)
+[trace après résolution](/2_TroubleShooting_DNS/traceFIn.png)
 
 Pour m’en assurer, je ping **www.woodytoys.lab**, et le ping fonctionne bel et bien, ce qui prouve le bon fonctionnement du résolveur et du SOA.  
-![capture](/2_TroubleShooting_DNS/ping%20.HEIC)
+![capture](/2_TroubleShooting_DNS/ping%20.png)
