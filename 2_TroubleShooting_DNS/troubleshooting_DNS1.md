@@ -1,4 +1,4 @@
-# Exercices de troubleshooting DHCP 2
+# Exercices de troubleshooting DNS1
 
 - **Auteur(s)** : Charlier Thomas  
 - **Date** : 25/11/2025  
